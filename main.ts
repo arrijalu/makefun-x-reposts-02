@@ -12,6 +12,26 @@ const source = join(here, 'POSTS.json');
 const targetDir = resolve(process.argv[2] ?? process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
 const fallbackDir = join(here, 'out');
 
+// --help / -h as the first CLI arg prints usage and exits successfully.
+const firstArg = process.argv[2];
+if (firstArg === '--help' || firstArg === '-h') {
+  console.log(`Usage: node main.ts [output-dir]
+
+Copies POSTS.json (next to this file) to an output directory.
+
+Output directory precedence:
+  1. CLI arg (positional)
+  2. MAKEFUN_OUTPUT_DIR environment variable
+  3. /output
+
+If the chosen directory is unwritable, falls back to ./out next to this file.
+
+Exit codes:
+  0  success (including fallback writes and --help)
+  2  POSTS.json missing or invalid`);
+  process.exit(0);
+}
+
 function copyPosts(dir: string): void {
   mkdirSync(dir, { recursive: true });
   const data = readFileSync(source); // bytes exactly as stored
@@ -33,7 +53,16 @@ function validate(data: Buffer): unknown[] {
   if (parsed === null || typeof parsed !== 'object' || !Array.isArray((parsed as { posts?: unknown }).posts)) {
     throw new Error('POSTS.json must be an object with a "posts" array');
   }
-  return (parsed as { posts: unknown[] }).posts;
+  const posts = (parsed as { posts: unknown[] }).posts;
+  posts.forEach((entry, index) => {
+    if (typeof entry !== 'string') {
+      throw new Error(`posts[${index}] must be a string, got ${entry === null ? 'null' : typeof entry}`);
+    }
+    if (!entry.startsWith('https://x.com/') || !entry.includes('/status/')) {
+      throw new Error(`posts[${index}] must be an X status address (https://x.com/.../status/...), got ${JSON.stringify(entry)}`);
+    }
+  });
+  return posts;
 }
 
 // Read and validate before touching the output directory.
